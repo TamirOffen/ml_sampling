@@ -14,7 +14,7 @@ import imageio
 
 class MapEnvironment(object):
     
-    # options for origin: 'bottom_left', 'center', TODO add more?
+    # options for origin: 'bottom_left', 'center'
     def __init__(self, json_file, origin='bottom_left'):
 
         # check if json file exists and load
@@ -365,3 +365,31 @@ class MapEnvironment(object):
         # store gif
         plan_time = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         imageio.mimsave(f'plan_{plan_time}.gif', plan_images, 'GIF', duration=0.05)
+
+
+    def draw_config_space(self, resolution=0.025):
+        '''
+        Calculate the configuration space for the robot and visualizes it
+        (as a scatter plot... looks better than you might think...).
+        @param resolution The resolution of the grid for each joint angle.
+                          higher takes less time, but looks worse.
+        '''
+        angle_range = np.arange(0, 2 * np.pi, resolution)
+        theta1_grid, theta2_grid = np.meshgrid(angle_range, angle_range)
+        theta1_flat = theta1_grid.flatten()
+        theta2_flat = theta2_grid.flatten()
+        configurations = np.vstack((theta1_flat, theta2_flat)).T
+
+        illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
+        
+        # plot the illegal configurations
+        plt.figure()
+        plt.scatter(illegal_configurations[:, 0], illegal_configurations[:, 1], c='r', s=1)
+        plt.xlabel('first link angle (Radians)')
+        plt.ylabel('second link angle (Radians)')
+        plt.title('Configuration Space')
+        plt.xlim(0, 2 * np.pi)
+        plt.ylim(0, 2 * np.pi)
+        # plt.grid(color='lightgrey', linestyle=':', linewidth=0.5)
+        plt.show()
+
