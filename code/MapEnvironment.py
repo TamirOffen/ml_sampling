@@ -11,6 +11,7 @@ from numpy.core.fromnumeric import size
 from Robot import Robot
 from shapely.geometry import Point, LineString, Polygon
 import imageio
+from AdaptiveSampler2D import AdaptiveSampler2D
 
 class MapEnvironment(object):
     
@@ -392,4 +393,36 @@ class MapEnvironment(object):
         plt.ylim(0, 2 * np.pi)
         # plt.grid(color='lightgrey', linestyle=':', linewidth=0.5)
         plt.show()
+
+    def draw_sampled_config_space(self, iterations, resolution=0.025, uniform=False):
+        """
+        iterations - number of sampling iterations to draw
+        resolution - config space drawing resolution (lower is better)
+        """
+        print("drawing the config space")
+        angle_range = np.arange(0, 2 * np.pi, resolution)
+        theta1_grid, theta2_grid = np.meshgrid(angle_range, angle_range)
+        theta1_flat = theta1_grid.flatten()
+        theta2_flat = theta2_grid.flatten()
+        configurations = np.vstack((theta1_flat, theta2_flat)).T
+        illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
+        # plot the illegal configurations
+        plt.figure()
+        plt.scatter(illegal_configurations[:, 0], illegal_configurations[:, 1], c='r', s=1)
+        plt.xlabel('first link angle (Radians)')
+        plt.ylabel('second link angle (Radians)')
+        plt.title('Configuration Space')
+        plt.xlim(0, 2 * np.pi)
+        plt.ylim(0, 2 * np.pi)
+
+        print(f"running the sampler for {iterations} iterations")
+        sampler = AdaptiveSampler2D(resolution=resolution, legal_config_func=self.config_validity_checker)
+        X_obs, X_free = sampler.run(num_iterations = iterations, uniform=uniform)
+        X_obs = np.array(list(X_obs))
+        X_free = np.array(list(X_free))
+        plt.scatter(X_obs[:, 0], X_obs[:, 1], c='k', s=1)  # Black for X_obs
+        plt.scatter(X_free[:, 0], X_free[:, 1], c='g', s=1)  # Green for X_free
+
+        plt.show()
+
 
