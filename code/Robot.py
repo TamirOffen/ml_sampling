@@ -70,6 +70,25 @@ class Robot(object):
         @param robot_positions Given links positions.
         '''
         # TODO: Task 2.2
-        return (LineString(robot_positions)).is_simple
+        links = []
+
+        for i in range(len(robot_positions) - 1):
+            next_link = LineString([robot_positions[i], robot_positions[i + 1]])
+
+            for j, link in enumerate(links):
+
+                if j < len(links) - 1 and next_link.intersects(link):
+                    return False
+
+                if next_link.overlaps(link):
+                    return False
+
+            if i == len(robot_positions) - 2 and next_link.equals(links[-1]):
+                return False
+
+            links.append(next_link)
+
+        return True
+
         
     
