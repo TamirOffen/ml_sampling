@@ -1,4 +1,57 @@
 import numpy as np
+import pygame
+import sys
+import threading
+
+class Plotter:
+    def __init__(self, width, height, scale_factor=50):
+        pygame.init()
+        self.width = width
+        self.height = height
+        self.scale_factor = scale_factor
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption('RRT# Visualization')
+        self.clock = pygame.time.Clock()
+        self.white = (255, 255, 255)
+        self.black = (0, 0, 0)
+        self.red = (255, 0, 0)
+        self.green = (0, 255, 0)
+        self.x_rand = None
+        self.x_free = set()
+        self.obstacles = None
+
+    def draw_point(self, x_rand, x_free):
+        self.x_rand = x_rand
+        self.x_free = x_free
+
+    def draw_obstacles(self, obstacles):
+        self.obstacles = obstacles
+
+    def update(self):
+        self.screen.fill(self.black)  # Clear screen with white background
+        for x_free_point in self.x_free:
+            x, y = x_free_point
+            x_scaled = int(x * self.scale_factor)
+            y_scaled = int(y * self.scale_factor)
+            pygame.draw.circle(self.screen, self.white, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
+        for x_obstacle in self.obstacles:
+            x, y = x_obstacle
+            x_scaled = int(x * self.scale_factor)
+            y_scaled = int(y * self.scale_factor)
+            pygame.draw.circle(self.screen, self.red, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
+        if self.x_rand:
+            x, y = self.x_rand
+            x_scaled = int(x * self.scale_factor)
+            y_scaled = int(y * self.scale_factor)
+            pygame.draw.circle(self.screen, self.green, (x_scaled, y_scaled), 3)  # Draw red circle for x_rand
+        pygame.display.flip()
+        # self.clock.tick(30)  # Limit frame rate to 30 FPS
+
+    def check_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
 class AdaptiveSampler2D:
     """
@@ -11,6 +64,7 @@ class AdaptiveSampler2D:
         self.legal_config_func = legal_config_func
         self.X_obs = set()
         self.X_free = set()
+        self.plotter = Plotter(800, 600, scale_factor=100)
 
     def init_pdf(self):
         num_of_cells = len(self.angle_range)
@@ -83,17 +137,25 @@ class AdaptiveSampler2D:
         q_obs = eta * b_obs * p_obs
         return 1 if q_free >= q_obs else -1
 
-    def run(self, num_iterations, print_every=0):
+    def run(self, num_iterations,illegal_configurations, print_every=0):
         for i in range(num_iterations):
             if print_every > 0:
-                if i % print_every == 0: print(f'iter {i}')
-
-            x_rand = self.sample() #(theta1, theta2)
+                if i % print_every == 0:
+                    print(f'iter {i}')
+            x_rand = self.sample()  # (theta1, theta2)
+            self.plotter.draw_obstacles(illegal_configurations)
+            self.plotter.draw_point(x_rand, self.X_free)
+            self.plotter.update()
+            pygame.time.delay(100)  # Add a delay of 10 milliseconds
             if self.legal_config_func(x_rand):
                 self.X_free.add(x_rand)
-            else: # only update the pdf if col
+            else:  # only update the pdf if col
                 self.X_obs.add(x_rand)
-                self.update_sampling_pdf(x_rand)
+                thread1 = threading.Thread(target=self.update_sampling_pdf, args=(x_rand))
+
+                thread1.start()
+                # self.update_sampling_pdf(x_rand)
+            self.plotter.check_events()
         X = (self.X_obs, self.X_free)
         return X
     
@@ -129,4 +191,5 @@ class AdaptiveSampler2D:
         x_1, x_2 = x
         return self.kernel((x_1/h, x_2/h), type) / (h**2)
 
-
+def round_point(point, decimal_places=2):
+    return tuple(round(coord, decimal_places) for coord in point)

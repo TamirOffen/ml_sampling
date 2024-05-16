@@ -368,6 +368,15 @@ class MapEnvironment(object):
         imageio.mimsave(f'plan_{plan_time}.gif', plan_images, 'GIF', duration=0.05)
 
 
+    def get_config_space(self, resolution=0.025):
+        angle_range = np.arange(0, 2 * np.pi, resolution)
+        theta1_grid, theta2_grid = np.meshgrid(angle_range, angle_range)
+        theta1_flat = theta1_grid.flatten()
+        theta2_flat = theta2_grid.flatten()
+        configurations = np.vstack((theta1_flat, theta2_flat)).T
+
+        illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
+        return illegal_configurations
     def draw_config_space(self, resolution=0.025):
         '''
         Calculate the configuration space for the robot and visualizes it
@@ -417,7 +426,7 @@ class MapEnvironment(object):
 
         print(f"running the sampler for {iterations} iterations")
         sampler = AdaptiveSampler2D(resolution=resolution, legal_config_func=self.config_validity_checker)
-        X_obs, X_free = sampler.run(num_iterations = iterations, uniform=uniform)
+        X_obs, X_free = sampler.run(num_iterations = iterations, illegal_configurations=self.get_config_space())
         X_obs = np.array(list(X_obs))
         X_free = np.array(list(X_free))
         plt.scatter(X_obs[:, 0], X_obs[:, 1], c='k', s=1)  # Black for X_obs
