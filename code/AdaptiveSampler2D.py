@@ -64,7 +64,7 @@ class AdaptiveSampler2D:
         self.legal_config_func = legal_config_func
         self.X_obs = set()
         self.X_free = set()
-        # self.plotter = Plotter(800, 600, scale_factor=100)
+        self.plotter = Plotter(800, 600, scale_factor=100)
 
     def init_pdf(self):
         num_of_cells = len(self.angle_range)
@@ -143,22 +143,22 @@ class AdaptiveSampler2D:
                 if i % print_every == 0:
                     print(f'iter {i}')
             x_rand = self.sample()  # (theta1, theta2)
-            # self.plotter.draw_obstacles(illegal_configurations)
-            # self.plotter.draw_point(x_rand, self.X_free)
-            # self.plotter.update()
-            # pygame.time.delay(100)  # Add a delay of 10 milliseconds
+            self.plotter.draw_obstacles(illegal_configurations)
+            self.plotter.draw_point(x_rand, self.X_free)
+            self.plotter.update()
+            pygame.time.delay(100)  # Add a delay of 10 milliseconds
             if self.legal_config_func(x_rand):
                 self.X_free.add(x_rand)
             else:  # only update the pdf if col
                 self.X_obs.add(x_rand)
-                thread1 = threading.Thread(target=self.update_sampling_pdf, args=(x_rand))
+                # thread1 = threading.Thread(target=self.update_sampling_pdf, args=(x_rand))
 
-                thread1.start()
+                # thread1.start()
                 self.update_sampling_pdf(x_rand)
-            # self.plotter.check_events()
+            self.plotter.check_events()
         X = (self.X_obs, self.X_free)
         return X
-    
+
     def kernel(self, x, type):
         """
         type = {uniform, gaussian, epanechnikov}

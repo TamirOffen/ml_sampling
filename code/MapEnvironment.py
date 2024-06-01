@@ -426,7 +426,7 @@ class MapEnvironment(object):
 
         print(f"running the sampler for {iterations} iterations")
         sampler = AdaptiveSampler2D(resolution=resolution, legal_config_func=self.config_validity_checker)
-        X_obs, X_free = sampler.run(num_iterations = iterations, illegal_configurations=self.get_config_space())
+        X_obs, X_free = sampler.run(num_iterations=iterations, illegal_configurations=self.get_config_space())
         X_obs = np.array(list(X_obs))
         X_free = np.array(list(X_free))
         plt.scatter(X_obs[:, 0], X_obs[:, 1], c='k', s=1)  # Black for X_obs

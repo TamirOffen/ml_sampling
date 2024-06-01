@@ -38,7 +38,7 @@ if __name__ == "__main__":
     print("drawing sampled config space")
     map_env.draw_sampled_config_space(iterations=1000, resolution=0.05)
     print("drawing uniform sampled config space")
-    # map_env.draw_sampled_config_space(iterations=1000, resolution=0.05, uniform=True)
+    map_env.draw_sampled_config_space(iterations=1000, resolution=0.05, uniform=True)
     print("planning a new place")
     planner = RRTMotionPlanner(planning_env=map_env, ext_mode="E2", goal_prob=0.05)
 
