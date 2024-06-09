@@ -13,10 +13,14 @@ from shapely.geometry import Point, LineString, Polygon
 import imageio
 from AdaptiveSampler2D import AdaptiveSampler2D
 
+import random
+import json
+
+
 class MapEnvironment(object):
-    
+
     # options for origin: 'bottom_left', 'center'
-    def __init__(self, json_file, origin='bottom_left'):
+    def __init__(self, json_file, origin='bottom_left', sampler_resolution=0.025):
 
         # check if json file exists and load
         json_path = os.path.join(os.getcwd(), json_file)
@@ -31,14 +35,17 @@ class MapEnvironment(object):
         self.start = np.array(json_dict['START'])
         self.load_obstacles(obstacles=json_dict['OBSTACLES'])
 
-
         self.goal = np.array(json_dict['GOAL'])
+
+        # sampler of this map (2 link arm robot)
+        self.resolution = sampler_resolution
+        self.sampler = AdaptiveSampler2D(resolution=sampler_resolution, legal_config_func=self.config_validity_checker)
 
         # create a 2-DOF manipulator robot (2 links)
         self.robot = Robot()
 
         # origin of robot
-        self.origin = [0, 0] # default is 'bottom_left'
+        self.origin = [0, 0]  # default is 'bottom_left'
         if origin == "center":
             self.origin = [self.xlimit[1] // 2, self.ylimit[1] // 2]
 
@@ -61,14 +68,17 @@ class MapEnvironment(object):
         # iterate over all obstacles
         self.obstacles, self.obstacles_edges = [], []
         for obstacle in obstacles:
-            non_applicable_vertices = [x[0] < self.xlimit[0] or x[0] > self.xlimit[1] or x[1] < self.ylimit[0] or x[1] > self.ylimit[1] for x in obstacle]
+            non_applicable_vertices = [
+                x[0] < self.xlimit[0] or x[0] > self.xlimit[1] or x[1] < self.ylimit[0] or x[1] > self.ylimit[1] for x
+                in obstacle]
             if any(non_applicable_vertices):
                 raise ValueError('An obstacle coincides with the maps boundaries!')
-            
+
             # make sure that the obstacle is a closed form
             if obstacle[0] != obstacle[-1]:
                 obstacle.append(obstacle[0])
-                self.obstacles_edges.append([LineString([Point(x[0],x[1]),Point(y[0],y[1])]) for (x,y) in zip(obstacle[:-1], obstacle[1:])])
+                self.obstacles_edges.append(
+                    [LineString([Point(x[0], x[1]), Point(y[0], y[1])]) for (x, y) in zip(obstacle[:-1], obstacle[1:])])
             self.obstacles.append(obstacle)
 
     def config_validity_checker(self, config):
@@ -81,20 +91,23 @@ class MapEnvironment(object):
         robot_positions = self.robot.compute_forward_kinematics(given_config=config, origin=self.origin)
 
         # add pos of origin
-        robot_positions = np.concatenate([np.array(self.origin).reshape((1,2)), robot_positions])
+        robot_positions = np.concatenate([np.array(self.origin).reshape((1, 2)), robot_positions])
 
         # verify that the robot do not collide with itself
         if not self.robot.validate_robot(robot_positions=robot_positions):
             return False
 
         # verify that all robot joints (and links) are between world boundaries
-        non_applicable_poses = [(x[0] < self.xlimit[0] or x[1] < self.ylimit[0] or x[0] > self.xlimit[1] or x[1] > self.ylimit[1]) for x in robot_positions]
+        non_applicable_poses = [
+            (x[0] < self.xlimit[0] or x[1] < self.ylimit[0] or x[0] > self.xlimit[1] or x[1] > self.ylimit[1]) for x in
+            robot_positions]
         if any(non_applicable_poses):
             return False
 
         # verify that all robot links do not collide with obstacle edges
         # for each obstacle, check collision with each of the robot links
-        robot_links = [LineString([Point(x[0],x[1]),Point(y[0],y[1])]) for x,y in zip(robot_positions.tolist()[:-1], robot_positions.tolist()[1:])]
+        robot_links = [LineString([Point(x[0], x[1]), Point(y[0], y[1])]) for x, y in
+                       zip(robot_positions.tolist()[:-1], robot_positions.tolist()[1:])]
         for obstacle_edges in self.obstacles_edges:
             for robot_link in robot_links:
                 obstacle_collisions = [robot_link.crosses(x) for x in obstacle_edges]
@@ -112,18 +125,21 @@ class MapEnvironment(object):
         '''
         # interpolate between first config and second config to verify that there is no collision during the motion
         required_diff = 0.05
-        interpolation_steps = int(np.linalg.norm(config2 - config1)//required_diff)
+        interpolation_steps = int(np.linalg.norm(config2 - config1) // required_diff)
         if interpolation_steps > 0:
             interpolated_configs = np.linspace(start=config1, stop=config2, num=interpolation_steps)
-            
+
             # compute robot links positions for interpolated configs
-            configs_positions = np.apply_along_axis(self.robot.compute_forward_kinematics, 1, interpolated_configs, origin=self.origin)
+            configs_positions = np.apply_along_axis(self.robot.compute_forward_kinematics, 1, interpolated_configs,
+                                                    origin=self.origin)
 
             # compute edges between joints to verify that the motion between two configs does not collide with anything
             edges_between_positions = []
             for j in range(self.robot.dim):
-                for i in range(interpolation_steps-1):
-                    edges_between_positions.append(LineString([Point(configs_positions[i,j,0],configs_positions[i,j,1]),Point(configs_positions[i+1,j,0],configs_positions[i+1,j,1])]))
+                for i in range(interpolation_steps - 1):
+                    edges_between_positions.append(LineString(
+                        [Point(configs_positions[i, j, 0], configs_positions[i, j, 1]),
+                         Point(configs_positions[i + 1, j, 0], configs_positions[i + 1, j, 1])]))
 
             # check collision for each edge between joints and each obstacle
             for edge_pos in edges_between_positions:
@@ -134,7 +150,7 @@ class MapEnvironment(object):
 
             # add origin of robot
             duplicated_origin = np.tile(np.array(self.origin).reshape((1, 1, 2)), (len(configs_positions), 1, 1))
-            configs_positions = np.concatenate([duplicated_origin, configs_positions], axis=1) 
+            configs_positions = np.concatenate([duplicated_origin, configs_positions], axis=1)
 
             # verify that the robot do not collide with itself during motion
             for config_positions in configs_positions:
@@ -142,11 +158,11 @@ class MapEnvironment(object):
                     return False
 
             # verify that all robot joints (and links) are between world boundaries
-            if len(np.where(configs_positions[:,:,0] < self.xlimit[0])[0]) > 0 or \
-               len(np.where(configs_positions[:,:,1] < self.ylimit[0])[0]) > 0 or \
-               len(np.where(configs_positions[:,:,0] > self.xlimit[1])[0]) > 0 or \
-               len(np.where(configs_positions[:,:,1] > self.ylimit[1])[0]) > 0:
-               return False
+            if len(np.where(configs_positions[:, :, 0] < self.xlimit[0])[0]) > 0 or \
+                    len(np.where(configs_positions[:, :, 1] < self.ylimit[0])[0]) > 0 or \
+                    len(np.where(configs_positions[:, :, 0] > self.xlimit[1])[0]) > 0 or \
+                    len(np.where(configs_positions[:, :, 1] > self.ylimit[1])[0]) > 0:
+                return False
 
         return True
 
@@ -158,7 +174,7 @@ class MapEnvironment(object):
         vec = vec / np.linalg.norm(vec)
         if vec[1] > 0:
             return np.arccos(vec[0])
-        else: # vec[1] <= 0
+        else:  # vec[1] <= 0
             return -np.arccos(vec[0])
 
     def check_if_angle_in_range(self, angle, ee_range):
@@ -188,7 +204,6 @@ class MapEnvironment(object):
         if points1.size == 0: return points2
         if points2.size == 0: return points1
         return np.unique(np.vstack((points1, points2)), axis=0)
-    
 
     # ------------------------#
     # Visualization Functions
@@ -202,11 +217,11 @@ class MapEnvironment(object):
 
         # interpolate configs list
         plan_configs_interpolated = []
-        for i in range(len(plan_configs)-1):
-
+        for i in range(len(plan_configs) - 1):
             # number of steps to add from i to i+1
-            interpolation_steps = int(np.linalg.norm(plan_configs[i+1] - plan_configs[i])//required_diff) + 1
-            interpolated_configs = np.linspace(start=plan_configs[i], stop=plan_configs[i+1], endpoint=False, num=interpolation_steps)
+            interpolation_steps = int(np.linalg.norm(plan_configs[i + 1] - plan_configs[i]) // required_diff) + 1
+            interpolated_configs = np.linspace(start=plan_configs[i], stop=plan_configs[i + 1], endpoint=False,
+                                               num=interpolation_steps)
             plan_configs_interpolated += list(interpolated_configs)
 
         # add goal vertex
@@ -237,9 +252,9 @@ class MapEnvironment(object):
 
         # show map
         if show_map:
-            #plt.show() # replace savefig with show if you want to display map actively
+            # plt.show() # replace savefig with show if you want to display map actively
             plt.savefig('map.png')
-            
+
         return plt
 
     def create_map_visualization(self):
@@ -248,10 +263,10 @@ class MapEnvironment(object):
         '''
         # create figure and add background
         plt.figure()
-        back_img = np.ones((self.ylimit[1]+1, self.xlimit[1]+1, 3)) # white background
+        back_img = np.ones((self.ylimit[1] + 1, self.xlimit[1] + 1, 3))  # white background
         plt.imshow(back_img, origin="lower", zorder=0)
-        plt.xticks(np.arange(0, self.xlimit[1], self.xlimit[1]//10))
-        plt.yticks(np.arange(0, self.ylimit[1], self.ylimit[1]//10))
+        plt.xticks(np.arange(0, self.xlimit[1], self.xlimit[1] // 10))
+        plt.yticks(np.arange(0, self.ylimit[1], self.ylimit[1] // 10))
         plt.grid(color='lightgrey', linestyle=':', linewidth=0.5)
 
         return plt
@@ -267,7 +282,7 @@ class MapEnvironment(object):
             plt.fill(obstacle_xs, obstacle_ys, "r", zorder=5)
 
         return plt
-    
+
     def visualize_point_location(self, plt, config, color):
         '''
         Draw a point of start/goal on top of the given frame.
@@ -279,9 +294,9 @@ class MapEnvironment(object):
         point_loc = self.robot.compute_forward_kinematics(given_config=config, origin=self.origin)[-1]
 
         # draw the circle
-        point_circ = plt.Circle(point_loc, radius=5, color=color, zorder=5)
+        point_circ = plt.Circle(point_loc, radius=0.4, color=color, zorder=5)
         plt.gca().add_patch(point_circ)
-    
+
         return plt
 
     def visualize_inspection_points(self, plt, inspected_points=None):
@@ -290,11 +305,11 @@ class MapEnvironment(object):
         @param plt Plot of a frame of the plan.
         @param inspected_points list of inspected points.
         '''
-        plt.scatter(self.inspection_points[:,0], self.inspection_points[:,1], color='lime', zorder=5, s=3)
+        plt.scatter(self.inspection_points[:, 0], self.inspection_points[:, 1], color='lime', zorder=5, s=3)
 
         # if given inspected points
         if inspected_points is not None and len(inspected_points) > 0:
-            plt.scatter(inspected_points[:,0], inspected_points[:,1], color='g', zorder=6, s=3)
+            plt.scatter(inspected_points[:, 0], inspected_points[:, 1], color='g', zorder=6, s=3)
 
         return plt
 
@@ -308,13 +323,13 @@ class MapEnvironment(object):
         robot_positions = self.robot.compute_forward_kinematics(given_config=config, origin=self.origin)
 
         # add init robot pos - origin
-        robot_positions = np.concatenate([np.array(self.origin).reshape((1,2)), robot_positions])
+        robot_positions = np.concatenate([np.array(self.origin).reshape((1, 2)), robot_positions])
         # print(robot_positions)
 
         # draw the robot
-        plt.plot(robot_positions[:,0], robot_positions[:,1], 'coral', linewidth=3.0, zorder=10) # joints
-        plt.scatter(robot_positions[:,0], robot_positions[:,1], zorder=15) # joints
-        plt.scatter(robot_positions[-1:,0], robot_positions[-1:,1], color='cornflowerblue', zorder=15) # end-effector
+        plt.plot(robot_positions[:, 0], robot_positions[:, 1], 'coral', linewidth=3.0, zorder=10)  # joints
+        plt.scatter(robot_positions[:, 0], robot_positions[:, 1], zorder=15)  # joints
+        plt.scatter(robot_positions[-1:, 0], robot_positions[-1:, 1], color='cornflowerblue', zorder=15)  # end-effector
 
         return plt
 
@@ -324,9 +339,9 @@ class MapEnvironment(object):
         @param angle The angle of the robot's ee
         '''
         if angle > np.pi:
-            return angle - 2*np.pi
+            return angle - 2 * np.pi
         elif angle < -np.pi:
-            return angle + 2*np.pi
+            return angle + 2 * np.pi
         else:
             return angle
 
@@ -344,13 +359,12 @@ class MapEnvironment(object):
         # visualize each step of the given plan
         plan_images = []
         for i in range(len(plan)):
-
             # create background, obstacles, start
             plt = self.create_map_visualization()
             plt = self.visualize_obstacles(plt=plt)
             plt = self.visualize_point_location(plt=plt, config=self.start, color='r')
 
-            # add goal 
+            # add goal
             plt = self.visualize_point_location(plt=plt, config=self.goal, color='g')
 
             # add robot with current plan step
@@ -362,21 +376,11 @@ class MapEnvironment(object):
             data = np.fromstring(canvas.tostring_rgb(), dtype=np.uint8, sep='')
             data = data.reshape(canvas.get_width_height()[::-1] + (3,))
             plan_images.append(data)
-        
+
         # store gif
         plan_time = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         imageio.mimsave(f'plan_{plan_time}.gif', plan_images, 'GIF', duration=0.05)
 
-
-    def get_config_space(self, resolution=0.025):
-        angle_range = np.arange(0, 2 * np.pi, resolution)
-        theta1_grid, theta2_grid = np.meshgrid(angle_range, angle_range)
-        theta1_flat = theta1_grid.flatten()
-        theta2_flat = theta2_grid.flatten()
-        configurations = np.vstack((theta1_flat, theta2_flat)).T
-
-        illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
-        return illegal_configurations
     def draw_config_space(self, resolution=0.025):
         '''
         Calculate the configuration space for the robot and visualizes it
@@ -391,10 +395,16 @@ class MapEnvironment(object):
         configurations = np.vstack((theta1_flat, theta2_flat)).T
 
         illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
-        
+        print(f"ratio of free space to total space: {1 - (len(illegal_configurations) / len(angle_range) ** 2)}")
         # plot the illegal configurations
         plt.figure()
         plt.scatter(illegal_configurations[:, 0], illegal_configurations[:, 1], c='r', s=1)
+
+        point_circ = plt.Circle(self.start, radius=0.05, color='y', zorder=5)
+        plt.gca().add_patch(point_circ)
+        point_circ = plt.Circle(self.goal, radius=0.05, color='g', zorder=5)
+        plt.gca().add_patch(point_circ)
+
         plt.xlabel('first link angle (Radians)')
         plt.ylabel('second link angle (Radians)')
         plt.title('Configuration Space')
@@ -403,20 +413,21 @@ class MapEnvironment(object):
         # plt.grid(color='lightgrey', linestyle=':', linewidth=0.5)
         plt.show()
 
-    def draw_sampled_config_space(self, iterations, resolution=0.025, uniform=False):
+    def draw_sampled_config_space(self, iterations, print_every=0, uniform=False, draw_decision_regions=False):
         """
         iterations - number of sampling iterations to draw
         resolution - config space drawing resolution (lower is better)
         """
         print("drawing the config space")
-        angle_range = np.arange(0, 2 * np.pi, resolution)
+        angle_range = np.arange(0, 2 * np.pi, self.resolution)
         theta1_grid, theta2_grid = np.meshgrid(angle_range, angle_range)
         theta1_flat = theta1_grid.flatten()
         theta2_flat = theta2_grid.flatten()
         configurations = np.vstack((theta1_flat, theta2_flat)).T
         illegal_configurations = np.array([c for c in configurations if not self.config_validity_checker(c)])
         # plot the illegal configurations
-        plt.figure()
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
         plt.scatter(illegal_configurations[:, 0], illegal_configurations[:, 1], c='r', s=1)
         plt.xlabel('first link angle (Radians)')
         plt.ylabel('second link angle (Radians)')
@@ -425,13 +436,46 @@ class MapEnvironment(object):
         plt.ylim(0, 2 * np.pi)
 
         print(f"running the sampler for {iterations} iterations")
-        sampler = AdaptiveSampler2D(resolution=resolution, legal_config_func=self.config_validity_checker)
-        X_obs, X_free = sampler.run(num_iterations=iterations, illegal_configurations=self.get_config_space())
+        # sampler = AdaptiveSampler2D(resolution=resolution, legal_config_func=self.config_validity_checker)
+        X_obs, X_free = self.sampler.run(num_iterations=iterations, uniform=uniform, print_every=print_every)
         X_obs = np.array(list(X_obs))
         X_free = np.array(list(X_free))
         plt.scatter(X_obs[:, 0], X_obs[:, 1], c='k', s=1)  # Black for X_obs
         plt.scatter(X_free[:, 0], X_free[:, 1], c='g', s=1)  # Green for X_free
+        self.visualize_point_location(plt=plt, config=self.start, color='y')
+        self.visualize_point_location(plt=plt, config=self.goal, color='g')
 
+        if draw_decision_regions:
+            print(f'drawing decision regions')
+            plt.subplot(1, 2, 2)
+            pred_X_obs, pred_X_free = self.sampler.get_decision_regions()
+            plt.scatter([x[0] for x in pred_X_obs], [x[1] for x in pred_X_obs], c='r', marker='.',
+                        label='Decision Region for X_obs')
+            plt.scatter([x[0] for x in pred_X_free], [x[1] for x in pred_X_free], c='g', marker='.',
+                        label='Decision Region for X_free')
+            plt.xlabel('first link angle (Radians)')
+            plt.ylabel('second link angle (Radians)')
+            plt.title('Decision Regions')
+            plt.xlim(0, 2 * np.pi)
+            plt.ylim(0, 2 * np.pi)
+            plt.legend()
+
+        print(len(self.sampler.X_free))
+        plt.tight_layout()
         plt.show()
 
+    def get_decision_region_accuracy(self):
+        """
+        returns how accurate the decision region is.
+        number from 0 to 1, 0 being completely wrong, and 1 being completely right
+        """
+        total = len(self.sampler.angle_range) ** 2
+        correct_preds = 0
+        for theta_1 in self.sampler.angle_range:
+            for theta_2 in self.sampler.angle_range:
+                x = (theta_1, theta_2)
+                pred = self.sampler.classifier(x)
+                legal_config = self.config_validity_checker(x)
+                if pred == legal_config: correct_preds += 1
 
+        return correct_preds / total

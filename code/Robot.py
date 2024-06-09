@@ -9,7 +9,7 @@ class Robot(object):
     def __init__(self):
 
         # define robot properties
-        self.links = np.array([46, 40.0])
+        self.links = np.array([4,4])
         self.dim = len(self.links)
     
 
