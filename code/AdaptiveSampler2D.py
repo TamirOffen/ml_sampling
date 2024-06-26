@@ -1,58 +1,58 @@
 import numpy as np
-import pygame
-import sys
-import threading
+# import pygame
+# import sys
+# import threading
 import matplotlib.pyplot as plt
-
-class Plotter:
-    def __init__(self, width, height, scale_factor=50):
-        pygame.init()
-        self.width = width
-        self.height = height
-        self.scale_factor = scale_factor
-        self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption('RRT# Visualization')
-        self.clock = pygame.time.Clock()
-        self.white = (255, 255, 255)
-        self.black = (0, 0, 0)
-        self.red = (255, 0, 0)
-        self.green = (0, 255, 0)
-        self.x_rand = None
-        self.x_free = set()
-        self.obstacles = None
-
-    def draw_point(self, x_rand, x_free):
-        self.x_rand = x_rand
-        self.x_free = x_free
-
-    def draw_obstacles(self, obstacles):
-        self.obstacles = obstacles
-
-    def update(self):
-        self.screen.fill(self.black)  # Clear screen with white background
-        for x_free_point in self.x_free:
-            x, y = x_free_point
-            x_scaled = int(x * self.scale_factor)
-            y_scaled = int(y * self.scale_factor)
-            pygame.draw.circle(self.screen, self.white, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
-        for x_obstacle in self.obstacles:
-            x, y = x_obstacle
-            x_scaled = int(x * self.scale_factor)
-            y_scaled = int(y * self.scale_factor)
-            pygame.draw.circle(self.screen, self.red, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
-        if self.x_rand:
-            x, y = self.x_rand
-            x_scaled = int(x * self.scale_factor)
-            y_scaled = int(y * self.scale_factor)
-            pygame.draw.circle(self.screen, self.green, (x_scaled, y_scaled), 3)  # Draw red circle for x_rand
-        pygame.display.flip()
-        # self.clock.tick(30)  # Limit frame rate to 30 FPS
-
-    def check_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+#
+# class Plotter:
+#     def __init__(self, width, height, scale_factor=50):
+#         pygame.init()
+#         self.width = width
+#         self.height = height
+#         self.scale_factor = scale_factor
+#         self.screen = pygame.display.set_mode((self.width, self.height))
+#         pygame.display.set_caption('RRT# Visualization')
+#         self.clock = pygame.time.Clock()
+#         self.white = (255, 255, 255)
+#         self.black = (0, 0, 0)
+#         self.red = (255, 0, 0)
+#         self.green = (0, 255, 0)
+#         self.x_rand = None
+#         self.x_free = set()
+#         self.obstacles = None
+#
+#     def draw_point(self, x_rand, x_free):
+#         self.x_rand = x_rand
+#         self.x_free = x_free
+#
+#     def draw_obstacles(self, obstacles):
+#         self.obstacles = obstacles
+#
+#     def update(self):
+#         self.screen.fill(self.black)  # Clear screen with white background
+#         for x_free_point in self.x_free:
+#             x, y = x_free_point
+#             x_scaled = int(x * self.scale_factor)
+#             y_scaled = int(y * self.scale_factor)
+#             pygame.draw.circle(self.screen, self.white, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
+#         for x_obstacle in self.obstacles:
+#             x, y = x_obstacle
+#             x_scaled = int(x * self.scale_factor)
+#             y_scaled = int(y * self.scale_factor)
+#             pygame.draw.circle(self.screen, self.red, (x_scaled, y_scaled), 3)  # Draw black circle for x_free
+#         if self.x_rand:
+#             x, y = self.x_rand
+#             x_scaled = int(x * self.scale_factor)
+#             y_scaled = int(y * self.scale_factor)
+#             pygame.draw.circle(self.screen, self.green, (x_scaled, y_scaled), 3)  # Draw red circle for x_rand
+#         pygame.display.flip()
+#         # self.clock.tick(30)  # Limit frame rate to 30 FPS
+#
+#     def check_events(self):
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 pygame.quit()
+#                 sys.exit()
 
 
 class AdaptiveSampler2D:
@@ -67,7 +67,7 @@ class AdaptiveSampler2D:
         self.legal_config_func = legal_config_func
         self.X_obs = set()
         self.X_free = set()
-        self.plotter = Plotter(800, 600, scale_factor=100)
+        # self.plotter = Plotter(800, 600, scale_factor=100)
 
     def init_pdf(self):
         num_of_cells = len(self.angle_range)
@@ -94,7 +94,7 @@ class AdaptiveSampler2D:
         """
         b = 0
         for x in X:
-            scale = 0.95
+            scale = 0.7
             h_f = ((np.log(len(X) + 1) / len(X)) ** 0.5) * scale
             x_new = (x_sample[0] - x[0], x_sample[1] - x[1])
             b += self.multi_var_kernel(x_new, h_f, "epanechnikov")
@@ -162,6 +162,15 @@ class AdaptiveSampler2D:
                     self.update_sampling_pdf(x_rand)
         X = (self.X_obs, self.X_free)
         return X
+
+    def sample_point_and_update(self):
+        x_rand = self.sample()  # (theta1, theta2)
+        if self.legal_config_func(x_rand):
+            self.X_free.add(x_rand)
+        else:  # only update the pdf if col
+            self.X_obs.add(x_rand)
+            self.update_sampling_pdf(x_rand)
+        return x_rand
 
     def kernel(self, x, type):
         """
