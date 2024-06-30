@@ -2,9 +2,8 @@ import numpy as np
 from RRTTree import RRTTree
 import time
 from collections import deque
-
 from AdaptiveSampler2D import AdaptiveSampler2D
-
+from Relevancy import RelevancyCheck
 
 class RRTMotionPlanner(object):
 
@@ -23,9 +22,22 @@ class RRTMotionPlanner(object):
 
         self.random_sampler = random
         self.count = 0
+        self.configurations = []
         if not random:
             # adaptive sampler
             self.sampler = AdaptiveSampler2D(self.planning_env.config_validity_checker, resolution=0.05)
+
+    def normalize_angle(self, angle):
+        """
+        Normalize an angle to the range [-pi/2, pi/2].
+        @param angle Angle in radians to normalize.
+        """
+        normalized = (angle + np.pi) % (2 * np.pi) - np.pi
+        if normalized > np.pi / 2:
+            normalized -= np.pi
+        elif normalized < -np.pi / 2:
+            normalized += np.pi
+        return normalized
 
     def plan(self):
         """
@@ -37,29 +49,45 @@ class RRTMotionPlanner(object):
         plan = []
 
         self.tree.add_vertex(self.planning_env.start)
+        max_iterations = 1000
+        iteration = 0
+        relevancy = RelevancyCheck(self.planning_env.start, self.planning_env.goal, max_iterations)
         while True:
             new_config = self.sample_legal()
+            #new_config[0] = self.normalize_angle(new_config[0])
+            #new_config[1] = self.normalize_angle(new_config[1])
             self.count += 1
-            print(f'size: {self.count}')
+            #print(f'size: {self.count}')
             nearest_id, nearest_config = self.tree.get_nearest_config(new_config)
             extended_config, added_goal = self.extend(nearest_config, new_config)
+            #extended_config[0] = self.normalize_angle(extended_config[0])
+            #extended_config[1] = self.normalize_angle(extended_config[1])
+            #print(f"extended config is: {extended_config}")
             edge_cost = self.planning_env.robot.compute_distance(extended_config, nearest_config)
-
+            self.configurations.append(extended_config)
             if not self.planning_env.config_validity_checker(extended_config):
+                relevancy.G.add_obs_node(extended_config)
                 continue
-
+            relevancy.G.add_free_node(extended_config)
+            #if not relevancy.WrapperIsRelevant(extended_config, iteration):
+            #    print(f"not relevant configuration")
+            #    continue
+            #print("rregion")
+            iteration += 1
             if self.planning_env.edge_validity_checker(extended_config, nearest_config):
                 new_i = self.tree.add_vertex(extended_config, (nearest_id, nearest_config))
                 self.tree.add_edge(nearest_id, new_i, edge_cost)
                 if added_goal:
                     plan = list(self.build_path(extended_config, new_i, nearest_config))
                     break
-
+                if self.count >= 1000:
+                    plan = list(self.build_path(extended_config, new_i, nearest_config))
+                    break
         # print total path cost and time
         print('Total cost of path: {:.2f}'.format(self.compute_cost(plan)))
         print('Total time: {:.2f}'.format(time.time() - start_time))
 
-        return np.array(plan)
+        return np.array(plan), self.configurations
 
     def compute_cost(self, plan):
         """

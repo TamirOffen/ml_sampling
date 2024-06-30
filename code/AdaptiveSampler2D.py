@@ -62,7 +62,7 @@ class AdaptiveSampler2D:
 
     def __init__(self, legal_config_func, resolution=0.025):
         self.resolution = resolution
-        self.angle_range = np.arange(0, 2 * np.pi, resolution)
+        self.angle_range = np.arange((-0.5) * np.pi, 0.5 * np.pi, resolution)
         self.pdf = self.init_pdf()
         self.legal_config_func = legal_config_func
         self.X_obs = set()
